@@ -1,6 +1,5 @@
 package fansirsqi.xposed.sesame.util;
 
-import fansirsqi.xposed.sesame.util.CoroutineUtils;
 import android.annotation.SuppressLint;
 import android.os.Environment;
 
@@ -302,8 +301,8 @@ public class Files {
         return getTargetFileofUser(userId, "friendWatch.json");
     }
 
-    public static File getWuaFile() {
-        return getTargetFileofDir(MAIN_DIR, "wua.list");
+    public static File getappConfigFile() {
+        return getTargetFileofDir(CONFIG_DIR, "appConfig.json");
     }
 
     /**
@@ -461,7 +460,7 @@ public class Files {
         // 检查文件是否可读
         if (!f.canRead()) {
             //      Toast.show(f.getName() + "没有读取权限！", true);
-            ToastUtil.showToast(f.getName() + "没有读取权限！");
+            ToastUtil.INSTANCE.showToast(f.getName() + "没有读取权限！");
             return "";
         }
         StringBuilder result = new StringBuilder();
@@ -489,19 +488,19 @@ public class Files {
         // 检查文件权限和目录结构
         if (f.exists()) {
             if (!f.canWrite()) {
-                ToastUtil.showToast(f.getAbsoluteFile() + "没有写入权限！");
+                ToastUtil.INSTANCE.showToast(f.getAbsoluteFile() + "没有写入权限！");
                 return true;
             }
             if (f.isDirectory()) {
                 // 删除目录并重新创建文件
                 if (!f.delete()) {
-                    ToastUtil.showToast(f.getAbsoluteFile() + "无法删除目录！");
+                    ToastUtil.INSTANCE.showToast(f.getAbsoluteFile() + "无法删除目录！");
                     return true;
                 }
             }
         } else {
             if (!Objects.requireNonNull(f.getParentFile()).mkdirs() && !f.getParentFile().exists()) {
-                ToastUtil.showToast(f.getAbsoluteFile() + "无法创建目录！");
+                ToastUtil.INSTANCE.showToast(f.getAbsoluteFile() + "无法创建目录！");
                 return true;
             }
         }
@@ -683,7 +682,7 @@ public class Files {
      */
     public static boolean delFile(File file) {
         if (!file.exists()) {
-            ToastUtil.showToast(file.getAbsoluteFile() + "不存在！别勾把删了");
+            ToastUtil.INSTANCE.showToast(file.getAbsoluteFile() + "不存在！别勾把删了");
             Log.record(TAG, "delFile: " + file.getAbsoluteFile() + "不存在！,无须删除");
             return false;
         }

@@ -1,11 +1,14 @@
 package fansirsqi.xposed.sesame.task.antSports;
 
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.List; //健康岛导入的
 
 import fansirsqi.xposed.sesame.hook.ApplicationHook;
 import fansirsqi.xposed.sesame.hook.RequestManager;
+
 public class AntSportsRpcCall {
     private static final String chInfo = "ch_appcenter__chsub_9patch",
             timeZone = "Asia\\/Shanghai", version = "3.0.1.2", alipayAppVersion = String.valueOf(ApplicationHook.getAlipayVersion()),
@@ -42,6 +45,28 @@ public class AntSportsRpcCall {
                 "]";
         return RequestManager.requestString("com.alipay.sportshealth.biz.rpc.SportsHealthCoinTaskRpc.queryCoinTaskPanel", args1);
     }
+
+    //完整签到，如果任务需要就签到哦
+    public static String signUpTask(String taskId) {
+        // features 列表可根据需要保持一致
+
+        String args = "[\n" +
+                "    {\n" +
+                "        \"apiVersion\": \"energy\",\n" +
+                "        \"chInfo\": \"medical_health\",\n" +
+                "        \"clientOS\": \"android\",\n" +
+                "        \"features\": " + features + ",\n" +
+                "        \"taskCenId\": \"\",\n" +
+                "        \"taskId\": \"" + taskId + "\"\n" +
+                "    }\n" +
+                "]";
+
+        return RequestManager.requestString(
+                "com.alipay.sportshealth.biz.rpc.SportsHealthCoinTaskRpc.signUpTask",
+                args
+        );
+    }
+
     // 去完成任务
     public static String completeExerciseTasks(String taskId) {
         String args1 = "[\n" +
@@ -113,11 +138,6 @@ public class AntSportsRpcCall {
                 "]";
         return RequestManager.requestString("com.alipay.neverland.biz.rpc.pickBubbleTaskEnergy", args1);
     }
-
-
-
-
-
 
     public static String queryEnergyBubbleModule() {
         // 构建请求的参数 JSON 字符串
@@ -733,7 +753,6 @@ public class AntSportsRpcCall {
             );
         }
 
-
         /**
          * 领取能量任务奖励
          * RPC: com.alipay.neverland.biz.rpc.energyReceive
@@ -766,12 +785,14 @@ public class AntSportsRpcCall {
             );
         }
 
-
-
-
         /**
          * 健康岛 - 提交 Neverland 任务（用于 PROMOKERNEL_TASK 无 bizId 或特殊任务）
          * <p>
+         *     //实测 {
+         *     "scene": "MED_TASK_HALL",
+         *     "source": "jkdsportcard",
+         *     "taskType": "ADD_HEAD_TASK"
+         * } 这种也可以
          * RPC: com.alipay.neverland.biz.rpc.taskSend
          * <p>
          * 请求示例：
@@ -788,6 +809,14 @@ public class AntSportsRpcCall {
         public static String taskSend(JSONObject taskObj) {
             return RequestManager.requestString(
                     "com.alipay.neverland.biz.rpc.taskSend",
+                    "[" + taskObj.toString() + "]"
+            );
+        }
+
+
+        public static String taskReceive(JSONObject taskObj) {
+            return RequestManager.requestString(
+                    "com.alipay.neverland.biz.rpc.taskReceive",
                     "[" + taskObj.toString() + "]"
             );
         }
@@ -838,18 +867,21 @@ public class AntSportsRpcCall {
          * RPC: com.alipay.neverland.biz.rpc.queryMapInfo
          * 用于获取 buildingEnergyProcess / buildingEnergyFinal / mapStatus 等信息
          */
-        public static String queryMapInfo(String mapId, String branchId) {
-            String args = "[{" +
-                    "\"branchId\":\"" + branchId + "\"," +
-                    "\"drilling\":false," +
-                    "\"mapId\":\"" + mapId + "\"," +
-                    "\"source\":\"jkdsportcard\"" +
-                    "}]";
+        public static String queryMapInfo(String mapId, String branchId) throws JSONException {
+            JSONObject obj = new JSONObject();
+            obj.put("branchId", branchId);
+            obj.put("drilling", false);
+            obj.put("mapId", mapId);
+            obj.put("source", "jkdsportcard");
+
+            JSONArray arr = new JSONArray();
+            arr.put(obj);
             return RequestManager.requestString(
-                    "com.alipay.neverland.biz.rpc.queryMapInfoNew",
-                    args
+                    "com.alipay.neverland.biz.rpc.queryMapInfo",
+                    arr.toString()
             );
         }
+
         /**
          * 健康岛 - 查询地图详情（新接口）
          * RPC: com.alipay.neverland.biz.rpc.queryMapInfoNew
@@ -897,6 +929,27 @@ public class AntSportsRpcCall {
             return RequestManager.requestString(
                     "com.alipay.neverland.biz.rpc.queryMapDetail",
                     "[{\"mapId\":\"" + mapId + "\",\"source\":\"jkdsportcard\"}]"
+            );
+        }
+
+        /**
+         * 领取地图关卡奖励
+         * RPC: com.alipay.neverland.biz.rpc.mapStageReward
+         *
+         * @param branchId 分支 ID（如 MASTER）
+         * @param level    关卡等级
+         * @param mapId    地图 ID（如 MM13）
+         * @return RPC 返回 JSON 字符串
+         */
+        public static String mapStageReward(String branchId, int level, String mapId) {
+            return RequestManager.requestString(
+                    "com.alipay.neverland.biz.rpc.mapStageReward",
+                    "[{" +
+                            "\"branchId\":\"" + branchId + "\"," +
+                            "\"level\":" + level + "," +
+                            "\"mapId\":\"" + mapId + "\"," +
+                            "\"source\":\"jkdsportcard\"" +
+                            "}]"
             );
         }
 

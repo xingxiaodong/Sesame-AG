@@ -462,6 +462,7 @@ public class ApplicationHook {
 
     @SuppressLint("PrivateApi")
     private void handleHookLogic(ClassLoader classLoader, String packageName, String apkPath, Object rawParam) {
+        DataStore.INSTANCE.init(Files.CONFIG_DIR);
         XposedBridge.log(TAG + "|handleHookLogic " + packageName + " scuess!");
         if (hooked) return;
         hooked = true;
@@ -489,6 +490,7 @@ public class ApplicationHook {
         } catch (Throwable t) {
             Log.printStackTrace(TAG, "验证码Hook初始化失败", t);
         }
+
         try {
             // 在Hook Application.attach 之前，先 deoptimize LoadedApk.makeApplicationInner
             try {
@@ -507,6 +509,8 @@ public class ApplicationHook {
                     if (General.PACKAGE_NAME.equals(finalProcessName) || (finalProcessName != null && finalProcessName.endsWith(":widgetProvider"))) {
                         registerBroadcastReceiver(appContext);
                     }
+                    // SecurityBodyHelper初始化
+                    SecurityBodyHelper.INSTANCE.init(classLoader);
 
                     // ✅ 优先使用 Hook 捕获的版本号
                     if (VersionHook.hasVersion()) {
@@ -521,10 +525,6 @@ public class ApplicationHook {
                                 alipayVersion = new AlipayVersion(pInfo.versionName);
                                 Log.runtime(TAG, "📦 支付宝版本(回退): " + pInfo.versionName);
 
-                                // 特殊版本处理
-                                if (pInfo.versionName.equals("10.7.26.8100")) {
-                                    HookUtil.INSTANCE.fuckAccounLimit(classLoader);
-                                }
                             } else {
                                 Log.runtime(TAG, "⚠️ 无法获取版本信息");
                                 alipayVersion = new AlipayVersion(""); // 空版本
@@ -577,7 +577,7 @@ public class ApplicationHook {
                             Log.runtime(TAG, "onResume targetUid: " + targetUid);
                             if (targetUid == null) {
                                 Log.record(TAG, "onResume:用户未登录");
-                                Toast.show("用户未登录");
+                                Toast.INSTANCE.show("用户未登录");
                                 return;
                             }
                             if (!init) {
@@ -587,14 +587,14 @@ public class ApplicationHook {
                                 Log.runtime(TAG, "initHandler success");
                                 return;
                             }
-                            String currentUid = UserMap.getCurrentUid();
+                            String currentUid = UserMap.INSTANCE.getCurrentUid();
                             Log.runtime(TAG, "onResume currentUid: " + currentUid);
                             if (!targetUid.equals(currentUid)) {
                                 if (currentUid != null) {
                                     initHandler(true);  // 重新初始化
                                     lastExecTime = 0;   // 重置执行时间，防止被间隔逻辑拦截
                                     Log.record(TAG, "用户已切换");
-                                    Toast.show("用户已切换");
+                                    Toast.INSTANCE.show("用户已切换");
                                     return;
                                 }
                                 HookUtil.INSTANCE.hookUser(classLoader);
@@ -682,7 +682,7 @@ public class ApplicationHook {
                                         SchedulerAdapter.scheduleDelayedExecution(BaseModel.Companion.getCheckInterval().getValue());
                                         return;
                                     }
-                                    String currentUid = UserMap.getCurrentUid();
+                                    String currentUid = UserMap.INSTANCE.getCurrentUid();
                                     String targetUid = HookUtil.INSTANCE.getUserId(classLoader);
                                     if (targetUid == null || !targetUid.equals(currentUid)) {
                                         Log.record(TAG, "用户切换或为空，重新登录");
@@ -850,7 +850,7 @@ public class ApplicationHook {
                 String userId = HookUtil.INSTANCE.getUserId(classLoader);
                 if (userId == null) {
                     Log.record(TAG, "initHandler: 用户未登录");
-                    Toast.show("用户未登录");
+                    Toast.INSTANCE.show("用户未登录");
                     return false;
                 }
 
@@ -864,7 +864,7 @@ public class ApplicationHook {
                 Config.load(userId); // 加载配置
                 if (!Config.isLoaded()) {
                     Log.record(TAG, "用户模块配置加载失败");
-                    Toast.show("用户模块配置加载失败");
+                    Toast.INSTANCE.show("用户模块配置加载失败");
                     return false;
                 }
 
@@ -918,7 +918,7 @@ public class ApplicationHook {
                             }
 
                             // 取得当前用户 UID
-                            String userId = UserMap.getCurrentUid();
+                            String userId = UserMap.INSTANCE.getCurrentUid();
                             if (userId == null || userId.isEmpty()) {
                                 Log.error("VIPHook", "无法保存 referToken：当前用户ID为空");
                                 return Unit.INSTANCE;
@@ -953,7 +953,7 @@ public class ApplicationHook {
                         mainHandler.postDelayed(
                                 () -> {
                                     if (!PermissionUtil.checkOrRequestBatteryPermissions(appContext)) {
-                                        Toast.show("请授予支付宝始终在后台运行权限");
+                                        Toast.INSTANCE.show("请授予支付宝始终在后台运行权限");
                                     }
                                 },
                                 2000);
@@ -963,11 +963,11 @@ public class ApplicationHook {
 
                 Model.bootAllModel(classLoader);
                 Status.load(userId);
-                DataStore.INSTANCE.init(Files.CONFIG_DIR);
+
                 updateDay();
                 String successMsg = "芝麻粒-TK 加载成功✨";
                 Log.record(successMsg);
-                Toast.show(successMsg);
+                Toast.INSTANCE.show(successMsg);
             }
             offline = false;
             init = true;
@@ -976,7 +976,7 @@ public class ApplicationHook {
             return true;
         } catch (Throwable th) {
             Log.printStackTrace(TAG, "startHandler", th);
-            Toast.show("芝麻粒加载失败 🎃");
+            Toast.INSTANCE.show("芝麻粒加载失败 🎃");
             return false;
         }
     }
@@ -1359,6 +1359,8 @@ public class ApplicationHook {
         intentFilter.addAction(BroadcastActions.RPC_TEST); // 调试RPC的动作
         return intentFilter;
     }
+
+
 
 }
 

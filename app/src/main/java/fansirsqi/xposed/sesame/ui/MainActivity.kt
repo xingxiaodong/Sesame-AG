@@ -18,6 +18,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
 import androidx.core.util.Consumer
@@ -35,6 +36,9 @@ import fansirsqi.xposed.sesame.entity.UserEntity
 import fansirsqi.xposed.sesame.model.SelectModelFieldFunc
 import fansirsqi.xposed.sesame.newui.DeviceInfoCard
 import fansirsqi.xposed.sesame.newui.DeviceInfoUtil
+import fansirsqi.xposed.sesame.newutil.DataStore
+import fansirsqi.xposed.sesame.newutil.IconManager
+import fansirsqi.xposed.sesame.ui.log.LogViewerComposeActivity
 import fansirsqi.xposed.sesame.ui.widget.ListDialog
 import fansirsqi.xposed.sesame.util.AssetUtil
 import fansirsqi.xposed.sesame.util.Detector
@@ -55,6 +59,7 @@ class MainActivity : BaseActivity() {
     private val TAG = "MainActivity"
     private var hasPermissions = false
     private var userNameArray = arrayOf<String>()
+
     private var userEntityArray = arrayOf<UserEntity?>(null)
     private lateinit var oneWord: TextView
 
@@ -98,6 +103,14 @@ class MainActivity : BaseActivity() {
             val result = FansirsqiUtil.getOneWord()
             oneWord.text = result
         }
+
+        // 读取用户之前保存的设置
+        val prefs = getSharedPreferences("sesame_settings", MODE_PRIVATE)
+        // 默认为 false (不隐藏)
+        val isHidden = prefs.getBoolean("is_icon_hidden", false)
+        // 每次打开 App 都同步一次状态
+        IconManager.syncIconState(this, isHidden)
+
     }
 
     override fun onResume() {
@@ -111,22 +124,18 @@ class MainActivity : BaseActivity() {
             try {
                 val userNameList: MutableList<String> = ArrayList()
                 val userEntityList: MutableList<UserEntity?> = ArrayList()
-                val configFiles = Files.CONFIG_DIR.listFiles()
-                if (configFiles != null) {
-                    for (configDir in configFiles) {
-                        if (configDir.isDirectory) {
-                            val userId = configDir.name
-                            UserMap.loadSelf(userId)
-                            val userEntity = UserMap.get(userId)
-                            val userName = if (userEntity == null) {
-                                userId
-                            } else {
-                                userEntity.showName + ": " + userEntity.account
-                            }
-                            userNameList.add(userName)
-                            userEntityList.add(userEntity)
-                        }
+                val configFiles = FansirsqiUtil.getFolderList(Files.CONFIG_DIR.absolutePath)
+                for (userId in configFiles) {
+                    UserMap.loadSelf(userId)
+                    Log.runtime(TAG, "userId: $userId")
+                    val userEntity = UserMap.get(userId)
+                    val userName = if (userEntity == null) {
+                        userId
+                    } else {
+                        userEntity.showName + ": " + userEntity.account
                     }
+                    userNameList.add(userName)
+                    userEntityList.add(userEntity)
                 }
                 userNameArray = userNameList.toTypedArray()
                 userEntityArray = userEntityList.toTypedArray()
@@ -135,13 +144,15 @@ class MainActivity : BaseActivity() {
                 Log.printStackTrace(e)
             }
         }
-
         Log.runtime(TAG, "isModuleActivated: ${ServiceManager.isModuleActivated}")
+        val activedUser = DataStore.get("activedUser", UserEntity::class.java)
         if (ServiceManager.isModuleActivated) {
-            updateSubTitle(RunType.ACTIVE.nickName)
+            updateSubTitle(RunType.ACTIVE.nickName, activedUser)
         } else {
-            updateSubTitle(RunType.LOADED.nickName)
+            updateSubTitle(RunType.LOADED.nickName, activedUser)
         }
+
+
     }
 
     /**
@@ -158,11 +169,11 @@ class MainActivity : BaseActivity() {
     fun onClick(v: View) {
         when (v.id) {
             R.id.btn_forest_log -> {
-                openLogFile(Files.getForestLogFile())
+                newOpenLogFile(Files.getForestLogFile())
             }
 
             R.id.btn_farm_log -> {
-                openLogFile(Files.getFarmLogFile())
+                newOpenLogFile(Files.getFarmLogFile())
             }
 
             R.id.btn_view_error_log_file -> {
@@ -170,7 +181,7 @@ class MainActivity : BaseActivity() {
             }
 
             R.id.btn_view_all_log_file -> {
-                openLogFile(Files.getRecordLogFile())
+                newOpenLogFile(Files.getRecordLogFile())
             }
 
             R.id.btn_github -> {
@@ -204,6 +215,34 @@ class MainActivity : BaseActivity() {
         }
         startActivity(intent)
     }
+
+
+
+    /**
+     * 打开高性能日志文件查看器 (Compose版)
+     *
+     * @param logFile 要打开的日志文件
+     */
+    private fun newOpenLogFile(logFile: File) {
+        // 检查文件是否存在
+        if (!logFile.exists()) {
+            ToastUtil.showToast(this, "日志文件不存在: ${logFile.name}")
+            return
+        }
+
+        // 使用 Uri.fromFile 或者 toUri
+        val fileUri = logFile.toUri()
+
+        // 跳转到新的 LogViewerComposeActivity
+        val intent = Intent(this, LogViewerComposeActivity::class.java).apply {
+            data = fileUri
+            // Compose 页面不需要 "nextLine" 或 "canClear" 这种参数了
+            // 因为 Compose 页面自带逻辑，或者你可以在 ViewModel 里处理
+        }
+        startActivity(intent)
+    }
+
+
 
     /**
      * 打开GitHub项目页面
@@ -264,19 +303,29 @@ class MainActivity : BaseActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             1 -> { // 隐藏应用图标
+//                val shouldHide = !item.isChecked
+//                item.isChecked = shouldHide
+//                val aliasComponent = ComponentName(this, General.MODULE_PACKAGE_UI_ICON)
+//                val newState = if (shouldHide) {
+//                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+//                } else {
+//                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+//                }
+//                packageManager.setComponentEnabledSetting(
+//                    aliasComponent,
+//                    newState,
+//                    PackageManager.DONT_KILL_APP
+//                )
+//                Toast.makeText(this, "设置已保存，可能需要重启桌面才能生效", Toast.LENGTH_SHORT).show()
+//                return true
+                // 这里是你的菜单点击事件逻辑
                 val shouldHide = !item.isChecked
                 item.isChecked = shouldHide
-                val aliasComponent = ComponentName(this, General.MODULE_PACKAGE_UI_ICON)
-                val newState = if (shouldHide) {
-                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-                } else {
-                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                }
-                packageManager.setComponentEnabledSetting(
-                    aliasComponent,
-                    newState,
-                    PackageManager.DONT_KILL_APP
-                )
+                // 1. 保存用户的设置到 SP (建议操作，确保重启后状态正确)
+                val prefs = getSharedPreferences("sesame_settings", MODE_PRIVATE)
+                prefs.edit { putBoolean("is_icon_hidden", shouldHide) }
+                // 2. 调用统一管理器应用更改
+                IconManager.syncIconState(this, shouldHide)
                 Toast.makeText(this, "设置已保存，可能需要重启桌面才能生效", Toast.LENGTH_SHORT).show()
                 return true
             }
@@ -445,8 +494,6 @@ class MainActivity : BaseActivity() {
                 false,
                 ListDialog.ListType.SHOW
             )
-        } else {
-            ToastUtil.makeText(this, "请勿选择默认", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -470,8 +517,9 @@ class MainActivity : BaseActivity() {
     }
 
 
-    fun updateSubTitle(runType: String) {
+    fun updateSubTitle(runType: String = RunType.LOADED.nickName, currentUserEntity: UserEntity?) {
         baseTitle = ViewAppInfo.appTitle + "[" + runType + "]"
+        baseSubtitle = "当前载入: ${currentUserEntity?.showName ?: "未载入^o^ 重启支付宝看看👀"}"
         when (runType) {
             RunType.DISABLE.nickName -> setBaseTitleTextColor(ContextCompat.getColor(this, R.color.not_active_text))
             RunType.ACTIVE.nickName -> setBaseTitleTextColor(ContextCompat.getColor(this, R.color.active_text))

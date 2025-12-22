@@ -84,12 +84,22 @@ public class AntFarmRpcCall {
         return RequestManager.requestString("com.alipay.antfarm.sleep", args1);
     }
 
+    /**
+     * 家庭睡觉
+     *
+     * @param groupId 家庭ID
+     * @return 返回结果
+     */
+    public static String sleep(String groupId) {
+
+        String args1 = "[{\"groupId\":\"" + groupId + "\",\"requestType\":\"NORMAL\",\"sceneCode\":\"ANTFARM\",\"source\":\"H5\",\"spaceType\":\"ChickFamily\", \"version\":\"unknown\"}]";
+        return RequestManager.requestString("com.alipay.antfarm.sleep", args1);
+    }
+
     public static String wakeUp() {
         String args1 = "[{\"requestType\":\"RPC\",\"sceneCode\":\"ANTFARM\",\"source\":\"LOVECABIN\",\"version\":\"unknown\"}]";
         return RequestManager.requestString("com.alipay.antfarm.wakeUp", args1);
     }
-
-
 
     public static String rewardFriend(String consistencyKey, String friendId, String productNum, String time) {
         String args1 = "[{\"canMock\":true,\"consistencyKey\":\"" + consistencyKey
@@ -595,7 +605,6 @@ public class AntFarmRpcCall {
         return RequestManager.requestString("com.alipay.antfarm.OpenPrivatePolicy", params);
     }
 
-
     public static String deliverContentExpand(
             String ariverRpcTraceId,
             String eventId,
@@ -744,8 +753,6 @@ public class AntFarmRpcCall {
         return RequestManager.requestString("com.alipay.antfarm.clickForGiftV2", data);
     }
 
-
-
     /**
      * 查询抽抽乐活动信息
      *
@@ -844,7 +851,6 @@ public class AntFarmRpcCall {
                         + "\"source\":\"icon\"}]"
         );
     }
-
 
     /**
      * 执行抽奖（IP抽抽乐）
