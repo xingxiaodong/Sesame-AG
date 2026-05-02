@@ -1179,78 +1179,28 @@ class AntMember : ModelTask() {
 
     internal suspend fun doAllMemberAvailableTaskCompat(): Unit = CoroutineUtils.run {
         try {
-            val currentTaskResponse = AntMemberRpcCall.queryMemberTaskList()
-            val currentTaskObject = JSONObject(currentTaskResponse)
-            val stopReason = resolveMemberTaskQueryStopReason(currentTaskObject)
-            if (stopReason != null) {
+            val floatingBallState = processMemberFloatingBallTaskCompat()
+            if (ApplicationHookConstants.isOffline()) {
                 setFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_TASK_RISK_STOP_TODAY)
-                Log.member(
-                    TAG,
-                    "会员任务[amic]#${buildMemberTaskQueryStopMessage(stopReason, currentTaskObject)}"
-                )
-                return@run
-            }
-            if (!ResChecker.checkRes(TAG, currentTaskObject)) {
-                Log.error(
-                    "$TAG.doAllMemberAvailableTaskCompat",
-                    "会员任务新链路响应失败: " + currentTaskObject.optString("resultDesc", currentTaskResponse)
-                )
-                Log.member(TAG, "会员任务[amic]#新链路响应异常，回退legacy")
-                doAllMemberAvailableTask()
-                return@run
-            }
-            if (!hasCurrentMemberTaskSnapshot(currentTaskObject)) {
-                Log.member(TAG, "会员任务[amic]#新链路未返回任务快照，回退legacy")
-                doAllMemberAvailableTask()
+                Log.member(TAG, "会员任务[浮球]#检测到离线模式，今日停止继续刷新")
                 return@run
             }
 
-            val currentTasks = buildCurrentMemberTasks(currentTaskObject)
-            var processedCount = 0
-            var floatingBallState = MemberFloatingBallTaskProcessState.NO_TASK
-            for (task in currentTasks) {
-                if (processCurrentMemberTask(task)) {
-                    processedCount++
+            when (floatingBallState) {
+                MemberFloatingBallTaskProcessState.PROCESSED -> Unit
+
+                MemberFloatingBallTaskProcessState.RETRY_LATER -> {
+                    Log.member(TAG, "会员任务[浮球]#存在进行中任务，本轮结束，后续轮次继续查询")
                 }
-                if (ApplicationHookConstants.isOffline()) {
-                    setFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_TASK_RISK_STOP_TODAY)
-                    Log.member(TAG, "会员任务[amic]#检测到离线模式，今日停止继续刷新")
-                    return@run
+
+                MemberFloatingBallTaskProcessState.UNKNOWN -> {
+                    if (!hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_TASK_RISK_STOP_TODAY)) {
+                        Log.member(TAG, "会员任务[浮球]#当前链路状态未确认，本轮结束，后续轮次继续查询")
+                    }
                 }
-            }
 
-            if (processedCount == 0) {
-                floatingBallState = processMemberFloatingBallTaskCompat()
-                if (floatingBallState == MemberFloatingBallTaskProcessState.PROCESSED) {
-                    processedCount++
-                }
-            }
-
-            if (processedCount == 0 && hasFlagToday(StatusFlags.FLAG_ANTMEMBER_MEMBER_TASK_RISK_STOP_TODAY)) {
-                return@run
-            }
-
-            if (processedCount == 0) {
-                when (floatingBallState) {
-                    MemberFloatingBallTaskProcessState.RETRY_LATER -> {
-                        Log.member(TAG, "会员任务[amic]#存在浮球进行中任务，本轮结束，后续轮次继续查询")
-                    }
-
-                    MemberFloatingBallTaskProcessState.UNKNOWN -> {
-                        Log.member(TAG, "会员任务[amic]#当前链路状态未确认，本轮结束，后续轮次继续查询")
-                    }
-
-                    MemberFloatingBallTaskProcessState.NO_TASK -> {
-                        markMemberTaskEmptyToday(
-                            if (currentTasks.isEmpty()) {
-                                "会员任务[amic]#未发现可执行任务，今日停止继续刷新"
-                            } else {
-                                "会员任务[amic]#当前链路无新增可执行任务，今日停止继续刷新"
-                            }
-                        )
-                    }
-
-                    MemberFloatingBallTaskProcessState.PROCESSED -> Unit
+                MemberFloatingBallTaskProcessState.NO_TASK -> {
+                    markMemberTaskEmptyToday("会员任务[浮球]#未发现可执行任务，今日停止继续刷新")
                 }
             }
         } catch (t: Throwable) {
@@ -1684,6 +1634,10 @@ class AntMember : ModelTask() {
 
     private suspend fun tryProcessMemberFloatingBallAdTask(taskRef: MemberFloatingBallTaskRef): Boolean = CoroutineUtils.run {
         try {
+            if (TaskBlacklist.isTaskInBlacklist(memberTaskBlacklistModule, memberFloatingBallAdTaskTitle)) {
+                Log.member(TAG, "会员任务[浮球]#$memberFloatingBallAdTaskTitle 已在黑名单，跳过后续广告任务")
+                return@run true
+            }
             val adTaskResponse = AntMemberRpcCall.querySignFloatingBallAdTask(taskRef.bizNo)
             val adTaskObject = JSONObject(adTaskResponse)
             if (!ResChecker.checkRes(TAG, adTaskObject)) {
@@ -5417,6 +5371,7 @@ class AntMember : ModelTask() {
         private val TAG: String = AntMember::class.java.getSimpleName()
         private const val memberTaskBlacklistModule = "支付宝会员"
         private const val sesameCreditTaskBlacklistModule = "芝麻信用"
+        private const val memberFloatingBallAdTaskTitle = "会员浮球广告浏览任务"
 
         /**
          * 查询 + 自动领取可领取球（精简一行输出领取信息）
@@ -5616,6 +5571,14 @@ class AntMember : ModelTask() {
          */
         private fun isTaskInBlacklist(moduleName: String, taskTitle: String?): Boolean {
             return TaskBlacklist.isTaskInBlacklist(moduleName, taskTitle)
+        }
+
+        private fun isSesameTaskInBlacklist(moduleName: String, task: JSONObject, taskTitle: String): Boolean {
+            if (isTaskInBlacklist(moduleName, taskTitle)) {
+                return true
+            }
+            val templateId = task.optString("templateId")
+            return templateId.isNotBlank() && isTaskInBlacklist(moduleName, templateId)
         }
 
         private fun shouldSkipShareAssistSesameTask(task: JSONObject): Boolean {
@@ -6114,7 +6077,7 @@ class AntMember : ModelTask() {
                     continue
                 }
 
-                if (isTaskInBlacklist(sesameCreditTaskBlacklistModule, taskTitle)) {
+                if (isSesameTaskInBlacklist(sesameCreditTaskBlacklistModule, task, taskTitle)) {
                     Log.sesame(TAG, "芝麻信用💳[跳过黑名单任务]#$taskTitle")
                     skippedCount++
                     continue
