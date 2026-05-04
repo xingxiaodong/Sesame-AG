@@ -361,10 +361,23 @@ class ForestChouChouLe {
         } else if (res != null && res.check()) {
             rewardHandledTaskKeys.add(buildRewardHandledTaskKey(code, type))
             Log.forest("${s.name} 🧾 $name 奖励领取成功")
+            syncDrawAssetAfterTaskAward(s)
             true
         } else {
             Log.error(TAG, "${s.name} 奖励领取失败: $name")
             false
+        }
+    }
+
+    private fun syncDrawAssetAfterTaskAward(s: Scene) {
+        runCatching {
+            val res = AntForestRpcCall.drawSyncopengreen(s.id, s.code, "taskaward").toJson()
+            if (res != null && res.check()) {
+                val balance = res.optJSONObject("drawAsset")?.optInt("blance", 0) ?: 0
+                Log.forest("${s.name} 奖励后刷新抽奖次数: $balance")
+            }
+        }.onFailure {
+            Log.printStackTrace(TAG, "${s.name} 奖励后刷新抽奖次数失败", it)
         }
     }
 

@@ -439,11 +439,11 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         modelFields.addField(
             IntegerModelField(
                 "robExpandCardLimt",
-                "领取N倍卡能量阈值",
-                20000,
+                "领取N倍卡能量阈值(g)",
+                1,
                 1,
                 20000
-            ).withDesc("当 N 倍卡产生的可领取额外能量达到该值时才自动领取，避免零碎收益。").also { robMultiplierCollectLimit = it }
+            ).withDesc("当 N 倍卡产生的可领取额外能量达到该克数时才自动领取，避免零碎收益。").also { robMultiplierCollectLimit = it }
         )
 
         modelFields.addField(
@@ -6663,7 +6663,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 val friendHomeObj = if (task.isSelf()) {
                     querySelfHome()
                 } else {
-                    queryFriendHome(task.userId, null)
+                    queryFriendHome(task.userId, if (task.isPkContest()) "PKContest" else null)
                 }
                 if (friendHomeObj != null) {
                     // 获取真实用户名
@@ -6672,6 +6672,13 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     Log.forest("蹲点收取：用户[${realUserName}] userId=${task.userId} currentUid=${UserMap.currentUid} isSelf=${isSelf}")
                     // 直接执行能量收取，让原有的collectEnergy方法处理保护罩和炸弹检查
                     val result = collectEnergyForWaiting(task.userId, friendHomeObj, task.fromTag, realUserName)
+                    if (result.success && result.energyCount > 0) {
+                        runCatching {
+                            updateSelfHomePage(collectRobMultiplierEnergy = true)
+                        }.onFailure {
+                            Log.printStackTrace(TAG, "蹲点后领取N倍卡能量失败", it)
+                        }
+                    }
                     result.copy(userName = realUserName)
                 } else {
                     CollectResult(

@@ -254,13 +254,22 @@ object EnergyWaitingPersistence {
                     skippedCount++
                     return@forEach
                 }
-                if (FriendGuard.shouldSkipFriend(safeUserId, TAG, "恢复蚂蚁森林蹲点任务")) {
+                if (task.isPkContest()) {
+                    if (FriendGuard.isSelf(safeUserId)) {
+                        Log.forest("  验证[${task.userName}]：PK榜返回自己账号，跳过恢复")
+                        skippedCount++
+                        return@forEach
+                    }
+                } else if (FriendGuard.shouldSkipFriend(safeUserId, TAG, "恢复蚂蚁森林蹲点任务")) {
                     skippedCount++
                     return@forEach
                 }
 
                 // 重新查询用户主页以获取最新保护罩状态
-                val userHomeResponse = AntForestRpcCall.queryFriendHomePage(safeUserId, null)
+                val userHomeResponse = AntForestRpcCall.queryFriendHomePage(
+                    safeUserId,
+                    if (task.isPkContest()) "PKContest" else null
+                )
 
                 if (userHomeResponse.isNullOrEmpty()) {
                     Log.forest("  验证[${task.userName}]：无法获取主页信息，跳过恢复")

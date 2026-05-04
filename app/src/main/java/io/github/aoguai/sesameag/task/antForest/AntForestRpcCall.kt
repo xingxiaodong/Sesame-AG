@@ -1107,6 +1107,10 @@ object AntForestRpcCall {
     fun enterDrawActivityopengreen(activityId: String?, sceneCode: String, source: String): String {
         val requestData = JSONObject().apply {
             put("activityId", activityId ?: "")
+            put("context", JSONObject().apply {
+                put("appMode", "normal")
+                put("layerTipDisplayInfos", "[]")
+            })
             put("requestType", "RPC")
             put("sceneCode", sceneCode)
             put("source", source)
@@ -1119,6 +1123,7 @@ object AntForestRpcCall {
     @Throws(JSONException::class)
     fun listTaskopengreen(sceneCode: String, source: String): String {
         val requestData = JSONObject().apply {
+            put("extend", JSONObject().put("appMode", "normal"))
             put("requestType", "RPC")
             put("sceneCode", sceneCode)
             put("source", source)
@@ -1132,6 +1137,7 @@ object AntForestRpcCall {
     fun drawopengreen(activityId: String, sceneCode: String, source: String, userId: String): String {
         val requestData = JSONObject().apply {
             put("activityId", activityId)
+            put("context", JSONObject().put("appMode", "normal"))
             put("requestType", "RPC")
             put("sceneCode", sceneCode)
             put("source", source)
@@ -1139,6 +1145,20 @@ object AntForestRpcCall {
         }
         Log.forest("drawopengreen - 活动: $activityId, 场景: $sceneCode, source: $source")
         return RequestManager.requestString("com.alipay.antiepdrawprod.drawopengreen", "[$requestData]")
+    }
+
+    @JvmStatic
+    @Throws(JSONException::class)
+    fun drawSyncopengreen(activityId: String, sceneCode: String, source: String): String {
+        val requestData = JSONObject().apply {
+            put("activityId", activityId)
+            put("context", JSONObject().put("appMode", "normal"))
+            put("requestType", "RPC")
+            put("sceneCode", sceneCode)
+            put("source", source)
+        }
+        Log.forest("drawSyncopengreen - 活动: $activityId, 场景: $sceneCode, source: $source")
+        return RequestManager.requestString("com.alipay.antiepdrawprod.drawSyncopengreen", "[$requestData]")
     }
 
     @JvmStatic

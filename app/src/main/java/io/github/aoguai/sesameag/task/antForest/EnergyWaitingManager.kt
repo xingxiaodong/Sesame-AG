@@ -144,6 +144,13 @@ object EnergyWaitingManager {
         }
 
         /**
+         * 检查是否来自森林 PK 榜。
+         */
+        fun isPkContest(): Boolean {
+            return userName.startsWith("PK榜好友|") || fromTag.contains("PK榜")
+        }
+
+        /**
          * 检查是否有保护（保护罩或炸弹卡）
          */
         fun hasProtection(currentTime: Long = System.currentTimeMillis()): Boolean {
@@ -202,15 +209,9 @@ object EnergyWaitingManager {
         }
 
         // 好友账号：考虑保护罩
-        val currentTime = System.currentTimeMillis()
         val protectionEndTime = task.getProtectionEndTime()
 
-        return when {
-            // 有保护：等到保护结束后立即收取
-            protectionEndTime > currentTime -> protectionEndTime
-            // 无保护：能量成熟后立即收取
-            else -> task.produceTime
-        }
+        return maxOf(task.produceTime, protectionEndTime)
     }
 
     // 获取清理任务间隔 - 固定间隔清理过期任务
@@ -403,13 +404,29 @@ object EnergyWaitingManager {
                         Log.forest("🔍 倒计时2分钟验证[${task.getUserTypeTag()}${task.userName}]保护罩状态...")
                         try {
                             val safeUserId = FriendGuard.normalizeUserId(task.userId)
-                            if (safeUserId == null || FriendGuard.shouldSkipFriend(safeUserId, TAG, "验证蚂蚁森林蹲点好友")) {
+                            if (safeUserId == null) {
+                                Log.forest("❌ 验证失败[${task.getUserTypeTag()}${task.userName}]：userId无效，取消蹲点")
+                                waitingTasks.remove(task.taskId)
+                                EnergyWaitingPersistence.saveTasks(waitingTasks)
+                                return@launch
+                            }
+                            if (task.isPkContest()) {
+                                if (FriendGuard.isSelf(safeUserId)) {
+                                    Log.forest("❌ 验证失败[${task.getUserTypeTag()}${task.userName}]：PK榜返回自己账号，取消蹲点")
+                                    waitingTasks.remove(task.taskId)
+                                    EnergyWaitingPersistence.saveTasks(waitingTasks)
+                                    return@launch
+                                }
+                            } else if (FriendGuard.shouldSkipFriend(safeUserId, TAG, "验证蚂蚁森林蹲点好友")) {
                                 Log.forest("❌ 验证失败[${task.getUserTypeTag()}${task.userName}]：好友关系无效，取消蹲点")
                                 waitingTasks.remove(task.taskId)
                                 EnergyWaitingPersistence.saveTasks(waitingTasks)
                                 return@launch
                             }
-                            val userHomeResponse = AntForestRpcCall.queryFriendHomePage(safeUserId, null)
+                            val userHomeResponse = AntForestRpcCall.queryFriendHomePage(
+                                safeUserId,
+                                if (task.isPkContest()) "PKContest" else null
+                            )
                             if (!userHomeResponse.isNullOrEmpty()) {
                                 val userHomeObj = JSONObject(userHomeResponse)
                                 if (ForestUtil.shouldSkipWaitingDueToProtection(userHomeObj, task.produceTime)) {
@@ -761,7 +778,7 @@ object EnergyWaitingManager {
                 val matureTasks = waitingTasks.filter { (_, task) ->
                     val protectionEndTime = task.getProtectionEndTime()
                     // 取保护结束时间和产出时间中较大的一个作为“应该收取的时间”
-                    val collectTime = if (protectionEndTime > now) protectionEndTime else task.produceTime
+                    val collectTime = maxOf(task.produceTime, protectionEndTime)
                     now > collectTime + 2 * 60 * 1000L // 晚了2分钟以上
                 }
 
@@ -782,7 +799,8 @@ object EnergyWaitingManager {
                 // 2. 找出真正过期的任务（成熟超过1小时）
                 // 逻辑：这种任务通常已经失效或无法收取，需要从内存中移除
                 val expiredTasks = waitingTasks.filter { (_, task) ->
-                    now > task.produceTime + 60 * 60 * 1000L // 超过产出时间1小时
+                    val collectTime = maxOf(task.produceTime, task.getProtectionEndTime())
+                    now > collectTime + 60 * 60 * 1000L // 超过应收取时间1小时
                 }
 
                 if (expiredTasks.isNotEmpty()) {
@@ -930,13 +948,27 @@ object EnergyWaitingManager {
 
                         // 好友账号：重新查询用户主页以获取最新的保护罩状态
                         val safeUserId = FriendGuard.normalizeUserId(task.userId)
-                        if (safeUserId == null || FriendGuard.shouldSkipFriend(safeUserId, TAG, "复核蚂蚁森林蹲点好友")) {
+                        if (safeUserId == null) {
+                            Log.forest("  ❌ 移除[${task.getUserTypeTag()}${task.userName}]球[${task.bubbleId}]：userId无效")
+                            tasksToRemove.add(task.taskId)
+                            return@forEach
+                        }
+                        if (task.isPkContest()) {
+                            if (FriendGuard.isSelf(safeUserId)) {
+                                Log.forest("  ❌ 移除[${task.getUserTypeTag()}${task.userName}]球[${task.bubbleId}]：PK榜返回自己账号")
+                                tasksToRemove.add(task.taskId)
+                                return@forEach
+                            }
+                        } else if (FriendGuard.shouldSkipFriend(safeUserId, TAG, "复核蚂蚁森林蹲点好友")) {
                             Log.forest("  ❌ 移除[${task.getUserTypeTag()}${task.userName}]球[${task.bubbleId}]：好友关系无效")
                             tasksToRemove.add(task.taskId)
                             return@forEach
                         }
 
-                        val userHomeResponse = AntForestRpcCall.queryFriendHomePage(safeUserId, null)
+                        val userHomeResponse = AntForestRpcCall.queryFriendHomePage(
+                            safeUserId,
+                            if (task.isPkContest()) "PKContest" else null
+                        )
 
                         if (userHomeResponse.isNullOrEmpty()) {
                              Log.forest("  验证[${task.getUserTypeTag()}${task.userName}]：无法获取主页信息，保留任务")
