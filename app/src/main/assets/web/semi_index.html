@@ -269,6 +269,18 @@
             max-width: 13rem;
         }
 
+        .friend-list-item,
+        .friend-list-main,
+        .friend-list-main *,
+        .friend-list-actions .semi-radio,
+        .friend-list-actions .semi-radio *,
+        .friend-section-title,
+        .friend-section-title * {
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
         @media (max-width: 30rem) {
             .friend-list-item {
                 flex-direction: column;
@@ -575,6 +587,8 @@
             FOREST: '森林玩法',
             STALL: '新村玩法'
         };
+        const FRIEND_LONG_PRESS_DELAY_MS = 650;
+        const FRIEND_LONG_PRESS_MOVE_TOLERANCE = 12;
 
         // --- Mock Data Wrappers ---
         const getTabsData = () => {
@@ -1315,6 +1329,7 @@
             const [selectedIds, setSelectedIds] = useState(new Set()); // 选中的ID集合
             const [selectedCounts, setSelectedCounts] = useState({}); // ID对应的数值
             const [friendSheetVisible, setFriendSheetVisible] = useState(false);
+            const [friendSheetLoading, setFriendSheetLoading] = useState(false);
             const [friendSheetConfig, setFriendSheetConfig] = useState({ modelCode: '', fieldCode: '', type: '', title: '', desc: '' });
             const [friendSheetData, setFriendSheetData] = useState({
                 friends: [],
@@ -1341,6 +1356,8 @@
             const friendSummaryCacheRef = useRef({});
             const friendLongPressTimerRef = useRef(null);
             const friendLongPressTriggeredRef = useRef(false);
+            const friendLongPressStartRef = useRef(null);
+            const friendSheetLoadTokenRef = useRef(0);
 
             // 初始化
             useEffect(() => {
@@ -1354,17 +1371,20 @@
             }, []);
 
             useEffect(() => {
-                setFriendVisibleLimit(80);
+                setFriendVisibleLimit(40);
             }, [friendSheetSearch, friendViewMode, friendSpec, friendCountSpec]);
 
             useEffect(() => {
                 if (friendSheetVisible) return;
+                friendSheetLoadTokenRef.current += 1;
+                setFriendSheetLoading(false);
                 setFriendBatchMode(false);
                 setFriendBatchSelectedIds(new Set());
                 if (friendLongPressTimerRef.current) {
                     window.clearTimeout(friendLongPressTimerRef.current);
                     friendLongPressTimerRef.current = null;
                 }
+                friendLongPressStartRef.current = null;
                 friendLongPressTriggeredRef.current = false;
             }, [friendSheetVisible]);
 
@@ -1382,12 +1402,22 @@
                 });
             };
 
-            const startFriendRowLongPress = (userId) => {
+            const getFriendRowPoint = (event) => {
+                const touch = event?.touches?.[0];
+                if (touch) return { x: touch.clientX, y: touch.clientY };
+                if (typeof event?.clientX === 'number' && typeof event?.clientY === 'number') {
+                    return { x: event.clientX, y: event.clientY };
+                }
+                return null;
+            };
+
+            const startFriendRowLongPress = (userId, point) => {
                 const normalizedUserId = String(userId || '').trim();
                 if (!normalizedUserId) return;
                 if (friendLongPressTimerRef.current) {
                     window.clearTimeout(friendLongPressTimerRef.current);
                 }
+                friendLongPressStartRef.current = point || null;
                 friendLongPressTimerRef.current = window.setTimeout(() => {
                     setFriendBatchMode(true);
                     setFriendBatchSelectedIds(prev => {
@@ -1397,13 +1427,35 @@
                     });
                     friendLongPressTriggeredRef.current = true;
                     friendLongPressTimerRef.current = null;
-                }, 380);
+                    friendLongPressStartRef.current = null;
+                }, FRIEND_LONG_PRESS_DELAY_MS);
             };
 
             const cancelFriendRowLongPress = () => {
-                if (!friendLongPressTimerRef.current) return;
-                window.clearTimeout(friendLongPressTimerRef.current);
-                friendLongPressTimerRef.current = null;
+                if (friendLongPressTimerRef.current) {
+                    window.clearTimeout(friendLongPressTimerRef.current);
+                    friendLongPressTimerRef.current = null;
+                }
+                friendLongPressStartRef.current = null;
+            };
+
+            const cancelFriendRowLongPressOnMove = (point) => {
+                if (!friendLongPressTimerRef.current || !friendLongPressStartRef.current || !point) return;
+                const dx = Math.abs(point.x - friendLongPressStartRef.current.x);
+                const dy = Math.abs(point.y - friendLongPressStartRef.current.y);
+                if (Math.max(dx, dy) > FRIEND_LONG_PRESS_MOVE_TOLERANCE) {
+                    cancelFriendRowLongPress();
+                }
+            };
+
+            const closeFriendSheet = () => {
+                friendSheetLoadTokenRef.current += 1;
+                cancelFriendRowLongPress();
+                friendLongPressTriggeredRef.current = false;
+                setFriendSheetLoading(false);
+                setFriendBatchMode(false);
+                setFriendBatchSelectedIds(new Set());
+                setFriendSheetVisible(false);
             };
 
             const getDraftKey = (modelCode, fieldCode) => `${modelCode}::${fieldCode}`;
@@ -1456,9 +1508,6 @@
             };
 
             const getCachedFriendSummary = (modelCode, fieldCode, type, configValue) => {
-                if (!friendSheetVisible) {
-                    return getFriendSelectionSummary(modelCode, fieldCode) || makeFallbackFriendSelectionSummary(type, configValue);
-                }
                 const cacheKey = `${modelCode}::${fieldCode}`;
                 const normalizedValue = String(configValue ?? '');
                 const cached = friendSummaryCacheRef.current[cacheKey];
@@ -1571,41 +1620,77 @@
 
             const openFriendSheet = (modelCode, fieldItem) => {
                 const { code, name, type, desc, configValue } = fieldItem;
-                const payload = getFriendSelectionData(modelCode, code);
-                const effectiveConfigValue = payload?.field?.configValue ?? configValue;
-                const data = {
-                    friends: Array.isArray(payload.friends) ? payload.friends : [],
-                    groups: Array.isArray(payload.groups) ? payload.groups : [],
-                    preview: Array.isArray(payload.preview) ? payload.preview : [],
-                    summary: payload && typeof payload.summary === 'object' && payload.summary !== null ? payload.summary : null
-                };
-                const indexData = buildFriendSheetIndex(data.friends, data.groups);
+                const loadToken = friendSheetLoadTokenRef.current + 1;
+                friendSheetLoadTokenRef.current = loadToken;
+                cancelFriendRowLongPress();
+                friendLongPressTriggeredRef.current = false;
+                setFriendSheetConfig({ modelCode, fieldCode: code, type, title: name, desc: desc });
+                setFriendSheetData({
+                    friends: [],
+                    groups: [],
+                    preview: [],
+                    summary: null,
+                    groupById: {},
+                    allGroupsByUser: {}
+                });
                 if (type === 'FRIEND_SELECTION_COUNT') {
-                    const countSpec = parseFriendSelectionCountSpec(effectiveConfigValue);
+                    const countSpec = parseFriendSelectionCountSpec(configValue);
                     setFriendSpec(countSpec.selection);
                     setFriendCountSpec(countSpec);
                 } else {
-                    setFriendSpec(parseFriendSelectionSpec(effectiveConfigValue));
+                    setFriendSpec(parseFriendSelectionSpec(configValue));
                     setFriendCountSpec(makeDefaultFriendSelectionCountSpec());
                 }
-                setFriendSheetData({
-                    ...data,
-                    ...indexData
-                });
-                setFriendSheetConfig({ modelCode, fieldCode: code, type, title: name, desc: desc });
                 setFriendSheetSearch('');
                 setFriendViewMode('all');
-                setFriendVisibleLimit(80);
+                setFriendVisibleLimit(40);
                 setFriendExpandedSections({ groups: false, excludes: false, advanced: false });
                 setFriendSpecDirty(false);
                 setFriendBatchMode(false);
                 setFriendBatchSelectedIds(new Set());
-                if (friendLongPressTimerRef.current) {
-                    window.clearTimeout(friendLongPressTimerRef.current);
-                    friendLongPressTimerRef.current = null;
-                }
-                friendSummaryCacheRef.current = {};
+                setFriendSheetLoading(true);
                 setFriendSheetVisible(true);
+
+                const loadFriendSheetData = () => {
+                    if (friendSheetLoadTokenRef.current !== loadToken) return;
+                    try {
+                        const payload = getFriendSelectionData(modelCode, code);
+                        if (friendSheetLoadTokenRef.current !== loadToken) return;
+                        const effectiveConfigValue = payload?.field?.configValue ?? configValue;
+                        const data = {
+                            friends: Array.isArray(payload.friends) ? payload.friends : [],
+                            groups: Array.isArray(payload.groups) ? payload.groups : [],
+                            preview: Array.isArray(payload.preview) ? payload.preview : [],
+                            summary: payload && typeof payload.summary === 'object' && payload.summary !== null ? payload.summary : null
+                        };
+                        const indexData = buildFriendSheetIndex(data.friends, data.groups);
+                        if (type === 'FRIEND_SELECTION_COUNT') {
+                            const countSpec = parseFriendSelectionCountSpec(effectiveConfigValue);
+                            setFriendSpec(countSpec.selection);
+                            setFriendCountSpec(countSpec);
+                        } else {
+                            setFriendSpec(parseFriendSelectionSpec(effectiveConfigValue));
+                            setFriendCountSpec(makeDefaultFriendSelectionCountSpec());
+                        }
+                        setFriendSheetData({
+                            ...data,
+                            ...indexData
+                        });
+                        friendSummaryCacheRef.current[`${modelCode}::${code}`] = {
+                            configValue: String(effectiveConfigValue ?? ''),
+                            summary: data.summary || makeFallbackFriendSelectionSummary(type, effectiveConfigValue)
+                        };
+                    } finally {
+                        if (friendSheetLoadTokenRef.current === loadToken) {
+                            setFriendSheetLoading(false);
+                        }
+                    }
+                };
+                if (window.requestAnimationFrame) {
+                    window.requestAnimationFrame(() => window.setTimeout(loadFriendSheetData, 0));
+                } else {
+                    window.setTimeout(loadFriendSheetData, 0);
+                }
             };
 
             const setFriendCountOverride = (kind, id, value) => {
@@ -1630,6 +1715,7 @@
             };
 
             const saveFriendSheet = () => {
+                if (friendSheetLoading) return;
                 const { modelCode, fieldCode, type } = friendSheetConfig;
                 const normalizedSpec = {
                     ...friendSpec,
@@ -1649,20 +1735,31 @@
                         userCountOverrides: normalizeStringNumberMap(friendCountSpec.userCountOverrides)
                     }
                     : normalizedSpec;
-                commitFieldChange(modelCode, fieldCode, JSON.stringify(newValue));
-                setFriendSheetVisible(false);
-                Toast.success("已保存好友选择");
+                closeFriendSheet();
+                window.setTimeout(() => {
+                    commitFieldChange(modelCode, fieldCode, JSON.stringify(newValue));
+                    Toast.success("已保存好友选择");
+                }, 0);
             };
 
             const scrollToPanel = (modelCode) => {
-                window.setTimeout(() => {
+                const alignPanel = (behavior = 'smooth') => {
                     const panelNode = panelRefs.current[modelCode];
-                    if (panelNode && typeof panelNode.scrollIntoView === 'function') {
-                        panelNode.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    if (panelNode && typeof panelNode.getBoundingClientRect === 'function') {
+                        const targetTop = window.pageYOffset + panelNode.getBoundingClientRect().top - 80;
+                        window.scrollTo({ top: Math.max(0, targetTop), behavior });
                     } else {
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        window.scrollTo({ top: 0, behavior });
                     }
-                }, 320);
+                };
+                if (window.requestAnimationFrame) {
+                    window.requestAnimationFrame(() => alignPanel('smooth'));
+                } else {
+                    alignPanel('smooth');
+                }
+                [180, 360, 560].forEach(delay => {
+                    window.setTimeout(() => alignPanel(delay === 560 ? 'auto' : 'smooth'), delay);
+                });
             };
 
             const scrollFriendSheetTo = (target) => {
@@ -1731,6 +1828,9 @@
             };
 
             const renderFriendSheet = () => {
+                if (friendSheetLoading) {
+                    return <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--semi-color-text-2)' }}>正在加载好友数据...</div>;
+                }
                 const groups = friendSheetData.groups || [];
                 const friends = friendSheetData.friends || [];
                 const isCountField = friendSheetConfig.type === 'FRIEND_SELECTION_COUNT';
@@ -2041,10 +2141,12 @@
                         <div
                             className="friend-list-item"
                             key={item.id}
-                            onMouseDown={() => startFriendRowLongPress(item.id)}
+                            onMouseDown={(e) => startFriendRowLongPress(item.id, getFriendRowPoint(e))}
+                            onMouseMove={(e) => cancelFriendRowLongPressOnMove(getFriendRowPoint(e))}
                             onMouseUp={cancelFriendRowLongPress}
                             onMouseLeave={cancelFriendRowLongPress}
-                            onTouchStart={() => startFriendRowLongPress(item.id)}
+                            onTouchStart={(e) => startFriendRowLongPress(item.id, getFriendRowPoint(e))}
+                            onTouchMove={(e) => cancelFriendRowLongPressOnMove(getFriendRowPoint(e))}
                             onTouchEnd={cancelFriendRowLongPress}
                             onTouchCancel={cancelFriendRowLongPress}
                             onContextMenu={(e) => {
@@ -2197,6 +2299,23 @@
                                     : groups.map(renderGroupRow)
                             ) : null}
                         </div>
+                        <div className="friend-list-panel">
+                            <Text strong>选择好友</Text>
+                            {filteredItems.length === 0 ? (
+                                <div style={{ padding: '0.75rem 0', color: '#999' }}>无匹配好友</div>
+                            ) : (
+                                visibleItems.map(renderFriendRow)
+                            )}
+                            {visibleItems.length < filteredItems.length ? (
+                                <Button
+                                    block
+                                    style={{ marginTop: '0.75rem' }}
+                                    onClick={() => setFriendVisibleLimit(prev => prev + 80)}
+                                >
+                                    加载更多 ({visibleItems.length}/{filteredItems.length})
+                                </Button>
+                            ) : null}
+                        </div>
                         <div style={{ padding: '0.5rem 1rem 0' }}>
                             {sectionTitle('excludes', '单独排除', `${summary.excludedCount} 项`)}
                             {friendExpandedSections.excludes ? (
@@ -2227,23 +2346,6 @@
                                         玩法开通过滤已默认开启且不可配置：仅对已确认开通当前玩法的好友生效。
                                     </div>
                                 </div>
-                            ) : null}
-                        </div>
-                        <div className="friend-list-panel">
-                            <Text strong>选择好友</Text>
-                            {filteredItems.length === 0 ? (
-                                <div style={{ padding: '0.75rem 0', color: '#999' }}>无匹配好友</div>
-                            ) : (
-                                visibleItems.map(renderFriendRow)
-                            )}
-                            {visibleItems.length < filteredItems.length ? (
-                                <Button
-                                    block
-                                    style={{ marginTop: '0.75rem' }}
-                                    onClick={() => setFriendVisibleLimit(prev => prev + 80)}
-                                >
-                                    加载更多 ({visibleItems.length}/{filteredItems.length})
-                                </Button>
                             ) : null}
                         </div>
                     </div>
@@ -2435,12 +2537,12 @@
                     <SideSheet
                         title={<span style={{ fontSize: '1rem', fontWeight: 600 }}>{friendSheetConfig.title}</span>}
                         visible={friendSheetVisible}
-                        onCancel={() => setFriendSheetVisible(false)}
+                        onCancel={closeFriendSheet}
                         width="100%"
                         placement="right"
                         bodyStyle={{ padding: '0.625rem' }}
                     >
-                        <div style={{ position: 'relative' }}>
+                        {friendSheetVisible ? <div style={{ position: 'relative' }}>
                             <div
                                 ref={friendSheetScrollRef}
                                 style={{ maxHeight: 'calc(100vh - 11.25rem)', overflowY: 'auto', paddingBottom: '5.5rem' }}
@@ -2456,10 +2558,10 @@
                                 </div>
                             </div>
                             <div className="sheet-footer" style={{ padding: '1rem', justifyContent: 'space-around', position: 'absolute', bottom: 0, width: '100%', background: 'var(--semi-color-bg-1)' }}>
-                                <Button style={{ marginRight: '0.625rem' }} onClick={() => setFriendSheetVisible(false)}>取消</Button>
-                                <Button theme="solid" onClick={saveFriendSheet}>保存</Button>
+                                <Button style={{ marginRight: '0.625rem' }} onClick={closeFriendSheet}>取消</Button>
+                                <Button theme="solid" disabled={friendSheetLoading} onClick={saveFriendSheet}>保存</Button>
                             </div>
-                        </div>
+                        </div> : null}
                     </SideSheet>
 
                     {/* 侧边列表弹窗 */}

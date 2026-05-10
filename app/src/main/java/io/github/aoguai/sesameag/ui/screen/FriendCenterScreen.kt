@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -171,14 +172,14 @@ fun FriendCenterScreen(
                 horizontalAlignment = Alignment.End
             ) {
                 SmallFloatingActionButton(
-                    onClick = { scope.launch { listState.animateScrollToItem(0) } }
+                    onClick = { scope.launch { listState.scrollToItem(0) } }
                 ) {
                     Icon(Icons.Default.KeyboardArrowUp, contentDescription = "滚动到顶部")
                 }
                 SmallFloatingActionButton(
                     onClick = {
                         val lastIndex = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
-                        scope.launch { listState.animateScrollToItem(lastIndex) }
+                        scope.launch { listState.scrollToItem(lastIndex) }
                     }
                 ) {
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "滚动到底部")
@@ -653,56 +654,58 @@ private fun FriendProfileRow(
             }
         )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (showCheckbox) {
-                Checkbox(
-                    checked = checked,
-                    onCheckedChange = onCheckedChange
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(profile.displayName.ifBlank { profile.userId }, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "${profile.userId} | ${relationText(profile.relation)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                val groupText = profile.groupNames.takeIf { it.isNotEmpty() }?.joinToString("、")
-                if (!groupText.isNullOrBlank()) {
+        DisableSelection {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (showCheckbox) {
+                    Checkbox(
+                        checked = checked,
+                        onCheckedChange = onCheckedChange
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(profile.displayName.ifBlank { profile.userId }, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "分组：$groupText",
+                        "${profile.userId} | ${relationText(profile.relation)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-                if (profile.capabilitySummary.isNotBlank()) {
-                    Text(
-                        profile.capabilitySummary,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Text(
-                    if (profile.effective) "当前可生效" else "不生效：${profile.inactiveReason}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (profile.effective) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.error
+                    val groupText = profile.groupNames.takeIf { it.isNotEmpty() }?.joinToString("、")
+                    if (!groupText.isNullOrBlank()) {
+                        Text(
+                            "分组：$groupText",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                TextButton(onClick = { onBlockedChange(!profile.globalBlocked) }) {
-                    Text(if (profile.globalBlocked) "移出全局黑名单" else "加入全局黑名单")
+                    if (profile.capabilitySummary.isNotBlank()) {
+                        Text(
+                            profile.capabilitySummary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        if (profile.effective) "当前可生效" else "不生效：${profile.inactiveReason}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (profile.effective) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        }
+                    )
                 }
-                TextButton(onClick = onGroupClick) {
-                    Text("分组")
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = { onBlockedChange(!profile.globalBlocked) }) {
+                        Text(if (profile.globalBlocked) "移出全局黑名单" else "加入全局黑名单")
+                    }
+                    TextButton(onClick = onGroupClick) {
+                        Text("分组")
+                    }
                 }
             }
         }
