@@ -108,6 +108,7 @@ object TokenHooker {
      * xlightPlugin 的入参结构在不同版本/场景下会有差异：
      * - 可能是 positionRequest 直接挂在根对象
      * - 也可能在 requestData[0].positionRequest
+     * - 模块主动发起 RPC 时 requestData 可能是字符串形式的 JSON 数组/对象
      */
     private fun extractPositionRequest(paramsJson: JSONObject): JSONObject? {
         paramsJson.optJSONObject("positionRequest")?.let { return it }
@@ -121,8 +122,30 @@ object TokenHooker {
                     item.optJSONObject("positionRequest")?.let { return it }
                 }
             }
+            is String -> extractPositionRequestFromString(requestData)?.let { return it }
         }
         return null
+    }
+
+    private fun extractPositionRequestFromString(requestData: String): JSONObject? {
+        val trimmed = requestData.trim()
+        if (trimmed.isEmpty()) return null
+        return try {
+            when {
+                trimmed.startsWith("[") -> {
+                    val array = JSONArray(trimmed)
+                    for (i in 0 until array.length()) {
+                        val item = array.optJSONObject(i) ?: continue
+                        item.optJSONObject("positionRequest")?.let { return it }
+                    }
+                    null
+                }
+                trimmed.startsWith("{") -> JSONObject(trimmed).optJSONObject("positionRequest")
+                else -> null
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun extractFirstRequestData(paramsJson: JSONObject): JSONObject? {
