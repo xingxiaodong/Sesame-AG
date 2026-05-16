@@ -26,7 +26,7 @@ private val sesameCreditDefaultBlacklist = setOf(
     "租1笔图书",             // 参数错误：promiseActivityExtCheck
     "去订阅芝麻小组件",       // 参数错误：promiseActivityExtCheck
     "坚持攒保障",            // 参数错误：promiseActivityExtCheck（与"坚持攒保障金"类似，防止匹配遗漏）
-    "逛租赁会场",            // 操作太频繁：OP_REPEAT_CHECK
+    "逛逛淘金币",            // 参数错误：promiseActivityExtCheck
     "去花呗翻卡",            // 操作太频繁：OP_REPEAT_CHECK
     "逛网商福利",            // 操作太频繁：OP_REPEAT_CHECK
     "领视频红包",            // 操作太频繁：OP_REPEAT_CHECK
@@ -48,6 +48,7 @@ private val sesameCreditDefaultBlacklist = setOf(
     "逛网商领福利金",         // 存在进行中的生活记录：PROMISE_HAS_PROCESSING_TEMPLATE
     "去浏览租赁大促会场",      // 存在进行中的生活记录：PROMISE_HAS_PROCESSING_TEMPLATE
     "逛一逛免费领点餐优惠",    // 存在进行中的生活记录：PROMISE_HAS_PROCESSING_TEMPLATE
+    "618去淘金币赢20亿",      // 存在进行中的生活记录：PROMISE_HAS_PROCESSING_TEMPLATE
     "领取任务将芝麻信用添加到首页", // 服务端模板不存在：PROMISE_TEMPLATE_NOT_EXIST
     "领取任务去开通信用额度"    // 服务端模板不存在：PROMISE_TEMPLATE_NOT_EXIST
 )
@@ -64,6 +65,7 @@ private val sesameAlchemyDefaultBlacklist = setOf(
     "芝麻大表鸽",
     "坚持签到",
     "玩游戏完成10个订单",
+    "玩任意游戏30秒",       // 缺少 promiseActivityExtCheck 闭环：ILLEGAL_ARGUMENT
     "坚持去玩休闲小游戏",   // 参数错误：ILLEGAL_ARGUMENT
     "租游戏账号得芝麻粒"    // 参数错误：ILLEGAL_ARGUMENT
 )
@@ -284,6 +286,8 @@ private val memberDefaultBlacklist = setOf(
     "会员浮球广告浏览任务" // 浮球后续广告缺少稳定 adBizId/configId 闭环
 )
 
+private val insuredDefaultBlacklist = emptySet<String>()
+
 private val sportsDefaultBlacklist = setOf(
     // 运动
     "去设计签名",
@@ -303,6 +307,7 @@ val DEFAULT_BLACKLIST: Map<String, Set<String>> = mapOf(
     "余额宝" to yuebaoDefaultBlacklist,
     "黄金票" to goldTicketDefaultBlacklist,
     "支付宝会员" to memberDefaultBlacklist,
+    "蚂蚁保" to insuredDefaultBlacklist,
     "运动" to sportsDefaultBlacklist,
     "神奇物种" to dodoDefaultBlacklist,
     "福气鱼池" to fishPondDefaultBlacklist

@@ -40,6 +40,7 @@ internal suspend fun AntSesameCredit.prepareSesameWorkflows(
     }
 
     if (sesameTask?.value == true || collectSesame?.value == true) {
+        claimProgress = true
         if (hasFlagToday(StatusFlags.FLAG_SESAME_ZML_CHECKIN_DONE)) {
             Log.sesame("⏭️ 今天已处理过芝麻粒福利签到，跳过执行")
         } else {
@@ -50,7 +51,6 @@ internal suspend fun AntSesameCredit.prepareSesameWorkflows(
             if (hasFlagToday(StatusFlags.FLAG_SESAME_DO_ALL_AVAILABLE_TASK)) {
                 Log.sesame("⏭️ 今天已完成过芝麻信用任务，跳过执行")
             } else {
-                claimProgress = true
                 Log.sesame("🎮 开始执行芝麻信用任务")
                 val sesameTaskSummary = doAllAvailableSesameTask()
                 if (sesameTaskSummary.interrupted || ApplicationHookConstants.isOffline()) {

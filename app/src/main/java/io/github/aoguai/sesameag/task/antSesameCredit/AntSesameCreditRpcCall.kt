@@ -12,6 +12,8 @@ object AntSesameCreditRpcCall {
     private const val SESAME_TASK_SCENE_CODE = "DAILY_MUST_DO_CARD"
     private const val SESAME_TASK_CH_INFO = "ch_zmxy_zmlsy__chsub_zmsy_jingangwei"
     private const val SESAME_TASK_JOIN_CH_INFO = "seasameList"
+    private const val METHOD_CREDIT_ACCUMULATE_QUERY_LIST_V3 =
+        "com.antgroup.zmxy.zmmemberop.biz.rpc.creditaccumulate.CreditAccumulateStrategyRpcManager.queryListV3"
     private const val METHOD_QUERY_CREDIT_FEEDBACK =
         "com.antgroup.zmxy.zmcustprod.biz.rpc.home.creditaccumulate.api.CreditAccumulateRpcManager.queryCreditFeedback"
     private const val METHOD_COLLECT_CREDIT_FEEDBACK =
@@ -28,14 +30,22 @@ object AntSesameCreditRpcCall {
                     resultCode == "200"
                 else -> false
             }
+            val errCodeSuccess = jo.optString("errCode") == "0"
             jo.optBoolean("success") ||
                 jo.optBoolean("isSuccess") ||
                 resultCodeSuccess ||
+                errCodeSuccess ||
                 jo.optString("memo").equals("SUCCESS", ignoreCase = true) ||
                 jo.optString("resultView") == "成功" ||
                 jo.optString("resultDesc") == "成功"
         } catch (_: Throwable) {
             false
+        }
+    }
+
+    private fun invalidateCreditAccumulateTaskListCacheIfSuccess(raw: String) {
+        if (isRpcSuccess(raw)) {
+            RpcCache.invalidate(METHOD_CREDIT_ACCUMULATE_QUERY_LIST_V3)
         }
     }
 
@@ -47,10 +57,12 @@ object AntSesameCreditRpcCall {
                 put("extendInfo", JSONObject())
             }
         }
-        return RequestManager.requestString(
+        val resp = RequestManager.requestString(
             "com.alipay.adtask.biz.mobilegw.service.task.finish",
             JSONArray().put(args).toString()
         )
+        invalidateCreditAccumulateTaskListCacheIfSuccess(resp)
+        return resp
     }
 
     @JvmStatic
@@ -100,7 +112,7 @@ object AntSesameCreditRpcCall {
     @JvmStatic
     fun queryAvailableSesameTask(): String {
         return RequestManager.requestString(
-            "com.antgroup.zmxy.zmmemberop.biz.rpc.creditaccumulate.CreditAccumulateStrategyRpcManager.queryListV3",
+            METHOD_CREDIT_ACCUMULATE_QUERY_LIST_V3,
             """[{"chInfo":"$SESAME_TASK_CH_INFO","deliverStatus":"","deliveryTemplateId":"","sceneCode":"$SESAME_TASK_SCENE_CODE","searchAddToHomeTask":true,"searchGuidePopFlag":true,"searchShareAssistTask":true,"searchSubscribeTask":true,"supportJumpAuth":true,"version":"$SESAME_TASK_VERSION"}]"""
         )
     }
@@ -118,10 +130,12 @@ object AntSesameCreditRpcCall {
             }
             put("templateId", taskTemplateId)
         }
-        return RequestManager.requestString(
+        val resp = RequestManager.requestString(
             "com.antgroup.zmxy.zmmemberop.biz.rpc.promise.PromiseRpcManager.joinActivity",
             JSONArray().put(args).toString()
         )
+        invalidateCreditAccumulateTaskListCacheIfSuccess(resp)
+        return resp
     }
 
     /**
@@ -147,11 +161,13 @@ object AntSesameCreditRpcCall {
                 put("version", version)
             }
         }
-        return RequestManager.requestString(
+        val resp = RequestManager.requestString(
             "com.antgroup.zmxy.zmmemberop.biz.rpc.creditaccumulate.CreditAccumulateStrategyRpcManager.taskFeedback",
             JSONArray().put(args).toString(),
             "zmmemberop", "taskFeedback", "CreditAccumulateStrategyRpcManager"
         )
+        invalidateCreditAccumulateTaskListCacheIfSuccess(resp)
+        return resp
     }
 
     /**
@@ -159,18 +175,22 @@ object AntSesameCreditRpcCall {
      */
     @JvmStatic
     fun finishSesameTask(recordId: String): String {
-        return RequestManager.requestString(
+        val resp = RequestManager.requestString(
             "com.antgroup.zmxy.zmmemberop.biz.rpc.promise.PromiseRpcManager.pushActivity",
             """[{"recordId":"$recordId"}]"""
         )
+        invalidateCreditAccumulateTaskListCacheIfSuccess(resp)
+        return resp
     }
 
     @JvmStatic
     fun adRewardLjcs(adTaskBizId: String): String {
-        return RequestManager.requestString(
+        val resp = RequestManager.requestString(
             "com.antgroup.zmxy.zmmemberop.biz.rpc.promise.PromiseRpcManager.adRewardLjcs",
             """[{"adTaskBizId":"$adTaskBizId"}]"""
         )
+        invalidateCreditAccumulateTaskListCacheIfSuccess(resp)
+        return resp
     }
 
     /**
@@ -525,7 +545,7 @@ object AntSesameCreditRpcCall {
                 val requestData =
                     """[{"chInfo":"","deliverStatus":"","deliveryTemplateId":"","searchSubscribeTask":true,"supportRewardLJCS":true,"version":"alchemy"}]"""
                 return RequestManager.requestString(
-                    "com.antgroup.zmxy.zmmemberop.biz.rpc.creditaccumulate.CreditAccumulateStrategyRpcManager.queryListV3",
+                    METHOD_CREDIT_ACCUMULATE_QUERY_LIST_V3,
                     requestData
                 )
             }
