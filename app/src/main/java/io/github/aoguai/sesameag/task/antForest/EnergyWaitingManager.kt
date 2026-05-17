@@ -56,7 +56,9 @@ data class CollectResult(
     val hasShield: Boolean = false,
     val hasBomb: Boolean = false,
     val energyCount: Int = 0,
-    val totalCollected: Int = 0  // 累加后的总能量
+    val totalCollected: Int = 0,  // 累加后的总能量
+    val failedBubbleIds: Set<Long> = emptySet(),
+    val allRequestedBubblesFailed: Boolean = false
 )
 
 /**
@@ -117,6 +119,7 @@ class SmartRetryStrategy {
  */
 object EnergyWaitingManager {
     private const val TAG = "EnergyWaitingManager"
+    private const val FAILED_BUBBLE_STALE_GRACE_MS = 2 * 60 * 1000L
 
     /**
      * 等待任务数据类
@@ -667,7 +670,17 @@ object EnergyWaitingManager {
                     Log.forest("❌ 蹲点收取[${task.getUserTypeTag()}${task.userName}]失败：${result.message}")
 
                     // 根据失败原因决定是否重试
+                    val failedBubbleStale = result.allRequestedBubblesFailed &&
+                        System.currentTimeMillis() - task.produceTime >= FAILED_BUBBLE_STALE_GRACE_MS
                     when {
+                        failedBubbleStale -> {
+                            Log.forest("  → 服务端标记目标能量球收取失败且任务已成熟超过宽限期，移除蹲点任务 failedBubbleIds=${result.failedBubbleIds}")
+                            waitingTasks.remove(task.taskId)
+                            for (bubbleId in result.failedBubbleIds) {
+                                waitingTasks.remove("${task.userId}_${bubbleId}")
+                            }
+                            EnergyWaitingPersistence.saveTasks(waitingTasks)
+                        }
                         result.hasShield || result.hasBomb -> {
                             Log.forest("  → 检测到保护罩/炸弹卡")
                             waitingTasks.remove(task.taskId)

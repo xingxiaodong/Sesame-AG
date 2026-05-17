@@ -2379,40 +2379,42 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         fromTag: String?,
         skipPropCheck: Boolean = false,
         rpcSource: String? = null
-    ) {
+    ): Set<Long> {
         val bizType = "GREEN"
-        val safeUserId = userId ?: return
-        if (bubbleIds.isEmpty()) return
+        val failedBubbleIds = linkedSetOf<Long>()
+        val safeUserId = userId ?: return failedBubbleIds
+        if (bubbleIds.isEmpty()) return failedBubbleIds
         val isBatchCollect = batchRobEnergy?.value == true
         if (isBatchCollect) {
             var i = 0
             while (i < bubbleIds.size) {
                 val subList: MutableList<Long> =
                     bubbleIds.subList(i, min(i + MAX_BATCH_SIZE, bubbleIds.size))
-                collectEnergy(
-                    CollectEnergyEntity(
-                        safeUserId,
-                        userHomeObj,
-                        AntForestRpcCall.batchEnergyRpcEntity(bizType, safeUserId, subList, rpcSource),
-                        fromTag,
-                        skipPropCheck  // 🚀 传递快速通道标记
-                    )
+                val collectEnergyEntity = CollectEnergyEntity(
+                    safeUserId,
+                    userHomeObj,
+                    AntForestRpcCall.batchEnergyRpcEntity(bizType, safeUserId, subList, rpcSource),
+                    fromTag,
+                    skipPropCheck  // 🚀 传递快速通道标记
                 )
+                collectEnergy(collectEnergyEntity)
+                failedBubbleIds.addAll(collectEnergyEntity.failedBubbleIds)
                 i += MAX_BATCH_SIZE
             }
         } else {
             for (id in bubbleIds) {
-                collectEnergy(
-                    CollectEnergyEntity(
-                        safeUserId,
-                        userHomeObj,
-                        AntForestRpcCall.energyRpcEntity(bizType, safeUserId, id, rpcSource),
-                        fromTag,
-                        skipPropCheck  // 🚀 传递快速通道标记
-                    )
+                val collectEnergyEntity = CollectEnergyEntity(
+                    safeUserId,
+                    userHomeObj,
+                    AntForestRpcCall.energyRpcEntity(bizType, safeUserId, id, rpcSource),
+                    fromTag,
+                    skipPropCheck  // 🚀 传递快速通道标记
                 )
+                collectEnergy(collectEnergyEntity)
+                failedBubbleIds.addAll(collectEnergyEntity.failedBubbleIds)
             }
         }
+        return failedBubbleIds
     }
 
     /**
@@ -3428,6 +3430,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 if ("PARTIAL_SUCCESS".equals(resultCode, ignoreCase = true)) {
                     val failedBubbleIds = jo.optJSONArray("failedBubbleIds")
                     if (failedBubbleIds != null && failedBubbleIds.length() > 0) {
+                        collectEnergyEntity.recordFailedBubbleIds(failedBubbleIds)
                         Log.runtime(TAG, "[" + getAndCacheUserName(userId) + "]收取能量部分成功: " + jo.optString("resultDesc") + ", failedBubbleIds=" + failedBubbleIds)
                     }
                 }
@@ -7366,10 +7369,12 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             val beforeTotal = totalCollected
 
             // 🚀 启用快速收取通道：跳过道具检查，加速蹲点收取
-            collectVivaEnergy(userId, queryResult, availableBubbles, fromTag, skipPropCheck = true)
+            val failedBubbleIds = collectVivaEnergy(userId, queryResult, availableBubbles, fromTag, skipPropCheck = true)
 
             // 计算收取的能量数量
             val collectedEnergy = totalCollected - beforeTotal
+            val requestedBubbleIds = availableBubbles.toSet()
+            val allRequestedFailed = failedBubbleIds.isNotEmpty() && failedBubbleIds.containsAll(requestedBubbleIds)
 
             return if (collectedEnergy > 0) {
                 CollectResult(
@@ -7377,7 +7382,16 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                     userName = userName,
                     energyCount = collectedEnergy,
                     totalCollected = totalCollected,
-                    message = "收取成功，共收取${availableBubbles.size}个能量球，${collectedEnergy}g能量"
+                    message = "收取成功，共收取${availableBubbles.size}个能量球，${collectedEnergy}g能量",
+                    failedBubbleIds = failedBubbleIds
+                )
+            } else if (allRequestedFailed) {
+                CollectResult(
+                    success = false,
+                    userName = userName,
+                    message = "服务端标记目标能量球收取失败",
+                    failedBubbleIds = failedBubbleIds,
+                    allRequestedBubblesFailed = true
                 )
             } else {
                 CollectResult(
