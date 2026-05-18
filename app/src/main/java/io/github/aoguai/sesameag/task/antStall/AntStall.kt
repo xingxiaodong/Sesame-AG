@@ -1007,6 +1007,14 @@ class AntStall : ModelTask() {
                     Log.stall("任务[$taskType]不支持RPC完成，跳过finishTask，等待服务端状态回写")
                     return false
                 }
+                if (ResChecker.isSilentFailure(json)) {
+                    val reason = desc.ifBlank {
+                        json.optString("resultDesc").ifBlank { json.optString("errorMsg") }
+                    }
+                    val detail = if (reason.isNotBlank()) "：$reason" else ""
+                    Log.stall("任务[$taskType]达到业务限制，跳过finishTask$detail")
+                    return false
+                }
                 Log.error(TAG, "finishTask err: $response")
             }
         } catch (t: Throwable) {
